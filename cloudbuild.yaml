@@ -1,0 +1,51 @@
+substitutions:
+  _SRC_DIR: "go/src/github.com/knative/serving"
+  _GCR_PATH: "gcr.io/${PROJECT_ID}/knative"
+  _GCS_PATH: "${PROJECT_ID}/knative"
+  _PUBLISH: "--nopublish"
+
+timeout: 1800s
+
+steps:
+# GCB will checkout the source into '/workspace/serving'
+- name: gcr.io/cloud-builders/git
+  entrypoint: bash
+  args:
+  - -c
+  - |
+    ls "/workspace"
+    git status
+    if [[ ! -d "${_SRC_DIR}" ]] ; then
+      mkdir -p ${_SRC_DIR}
+      cp -rp /workspace/. ${_SRC_DIR}
+    fi
+    ls "/workspace"
+    ls ${_SRC_DIR}
+
+- name: k8s.gcr.io/addon-builder
+  dir: "${_SRC_DIR}"
+  entrypoint: bash
+  args:
+  - -c
+  - |
+    # give the project_id for testing
+    export PROJECT_ID="${PROJECT_ID}"
+    #test/presubmit-tests.sh || true
+    #ignore test by now
+
+- name: k8s.gcr.io/addon-builder
+  dir: "${_SRC_DIR}"
+  env:
+  - 'SERVING_RELEASE_GCR=${_GCR_PATH}'
+  - 'SERVING_RELEASE_GCS=${_GCS_PATH}'
+  entrypoint: bash
+  args:
+  - -c
+  - |
+    go get -v github.com/google/go-containerregistry/cmd/ko
+    hack/release.sh --tag-release ${_PUBLISH} --skip-tests
+
+artifacts:
+  objects:
+    location: 'gs://${PROJECT_ID}/test-knative/'
+    paths: ['${_SRC_DIR}/release.yaml']
